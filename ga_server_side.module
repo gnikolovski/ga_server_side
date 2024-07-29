@@ -1,0 +1,96 @@
+<?php
+
+/**
+ * @file
+ * Sends events directly to Google Analytics via HTTP requests.
+ */
+
+use Drupal\Core\Cache\Cache;
+
+/**
+ * Implements hook_page_attachments().
+ */
+function ga_server_side_page_attachments(array &$page): void {
+  if (ga_server_side_is_enabled()) {
+    $script = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+               new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+               j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+               'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+               })(window,document,'script','dataLayer','" . ga_server_side_get_gtm_container_id() . "');";
+
+    $page['#attached']['html_head'][] = [
+      ['#tag' => 'script', '#value' => $script],
+      'ga_server_side',
+    ];
+  }
+
+  $config = \Drupal::config('ga_server_side.settings');
+  $page['#cache']['tags'] = Cache::mergeTags($page['#cache']['tags'] ?? [], $config->getCacheTags());
+  $page['#cache']['contexts'] = Cache::mergeTags($page['#cache']['contexts'] ?? [], ['user.roles:administrator']);
+}
+
+/**
+ * Implements hook_page_top().
+ */
+function ga_server_side_page_top(array &$page_top): void {
+  if (ga_server_side_is_enabled()) {
+    $page_top['gtm'] = [
+      '#noscript' => TRUE,
+      '#type' => 'html_tag',
+      '#tag' => 'iframe',
+      '#attributes' => [
+        'src' => 'https://www.googletagmanager.com/ns.html?id=' . ga_server_side_get_gtm_container_id(),
+        'height' => 0,
+        'width' => 0,
+        'style' => 'display:none;visibility:hidden;',
+      ],
+    ];
+  }
+
+  $config = \Drupal::config('ga_server_side.settings');
+  $page_top['#cache']['tags'] = Cache::mergeTags($page_top['#cache']['tags'] ?? [], $config->getCacheTags());
+  $page_top['#cache']['contexts'] = Cache::mergeTags($page_top['#cache']['contexts'] ?? [], ['user.roles:administrator']);
+}
+
+/**
+ * Check if we should insert tracking snippet.
+ *
+ * @return bool
+ *   TRUE if we should insert tracking snippet, FALSE otherwise.
+ */
+function ga_server_side_is_enabled(): bool {
+  $config = \Drupal::config('ga_server_side.settings');
+  $is_admin_page = \Drupal::service('router.admin_context')->isAdminRoute();
+
+  if ($config->get('tracking_snippet_type') !== 'gtm') {
+    return FALSE;
+  }
+
+  if (
+    $config->get('ignore_admin_pages') &&
+    $is_admin_page
+  ) {
+    return FALSE;
+  }
+
+  $current_user = \Drupal::currentUser();
+  if (
+    $config->get('disable_for_admins') &&
+    in_array('administrator', $current_user->getRoles())
+  ) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
+ * Gets the GTM container ID.
+ *
+ * @return string
+ *   The GTM container ID.
+ */
+function ga_server_side_get_gtm_container_id(): string {
+  $config = \Drupal::config('ga_server_side.settings');
+  return (string) $config->get('gtm_container_id');
+}
