@@ -12,12 +12,12 @@ use Drupal\commerce_product\Entity\ProductInterface;
 use Drupal\commerce_product\Entity\ProductVariationInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
-use Drupal\Core\Http\RequestStack;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\ga_server_side\BuildService;
 use Drupal\ga_server_side\PushService;
 use Drupal\state_machine\Event\WorkflowTransitionEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
@@ -43,16 +43,9 @@ class EventSubscriber implements EventSubscriberInterface {
   /**
    * The request stack.
    *
-   * @var \Drupal\Core\Http\RequestStack
+   * @var \Symfony\Component\HttpFoundation\RequestStack
    */
   protected RequestStack $requestStack;
-
-  /**
-   * The module handler.
-   *
-   * @var \Drupal\Core\Extension\ModuleHandlerInterface
-   */
-  protected ModuleHandlerInterface $moduleHandler;
 
   /**
    * The build service.
@@ -75,10 +68,8 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The entity type manager.
    * @param \Drupal\Core\Routing\RouteMatchInterface $route_match
    *   The route match.
-   * @param \Drupal\Core\Http\RequestStack $request_stack
+   * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
    *   The request stack.
-   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
-   *   The module handler.
    * @param \Drupal\ga_server_side\BuildService $build_service
    *   The build service.
    * @param \Drupal\ga_server_side\PushService $push_service
@@ -88,14 +79,12 @@ class EventSubscriber implements EventSubscriberInterface {
     EntityTypeManagerInterface $entity_type_manager,
     RouteMatchInterface $route_match,
     RequestStack $request_stack,
-    ModuleHandlerInterface $module_handler,
     BuildService $build_service,
     PushService $push_service
   ) {
     $this->entityTypeManager = $entity_type_manager;
     $this->routeMatch = $route_match;
     $this->requestStack = $request_stack;
-    $this->moduleHandler = $module_handler;
     $this->buildService = $build_service;
     $this->pushService = $push_service;
   }
@@ -132,7 +121,7 @@ class EventSubscriber implements EventSubscriberInterface {
 
       $request = $this->requestStack->getCurrentRequest();
       $variation_id = $request->query->get('v');
-      if (!empty($variation_id)) {
+      if (is_numeric($variation_id)) {
         $variation = $this->entityTypeManager
           ->getStorage('commerce_product_variation')
           ->load($variation_id);
@@ -143,7 +132,7 @@ class EventSubscriber implements EventSubscriberInterface {
       }
 
       if ($product_variation instanceof ProductVariationInterface) {
-        $event_params = $this->buildService->buildEventParams($product_variation, '1');
+        $event_params = $this->buildService->buildProductVariationEventParams($product_variation, '1');
         if (!empty($event_params)) {
           $this->pushService->push('view_item', $event_params);
         }
@@ -162,7 +151,7 @@ class EventSubscriber implements EventSubscriberInterface {
     $purchased_entity = $order_item->getPurchasedEntity();
 
     if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildEventParams($purchased_entity, strval($event->getQuantity()));
+      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, strval($event->getQuantity()));
       if (!empty($event_params)) {
         $this->pushService->push('add_to_cart', $event_params);
       }
@@ -180,7 +169,7 @@ class EventSubscriber implements EventSubscriberInterface {
     $purchased_entity = $order_item->getPurchasedEntity();
 
     if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildEventParams($purchased_entity, $order_item->getQuantity());
+      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $order_item->getQuantity());
       if (!empty($event_params)) {
         $this->pushService->push('remove_from_cart', $event_params);
       }
@@ -202,14 +191,14 @@ class EventSubscriber implements EventSubscriberInterface {
 
     $quantity = Calculator::subtract($order_item_quantity, $original_order_item_quantity);
     $event_name = 'add_to_cart';
-    if (Calculator::compare($quantity, '0') == -1) {
+    if (Calculator::compare($quantity, '0') === -1) {
       $quantity = Calculator::multiply($quantity, '-1');
       $event_name = 'remove_from_cart';
     }
 
     $purchased_entity = $order_item->getPurchasedEntity();
     if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildEventParams($purchased_entity, $quantity);
+      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $quantity);
       if (!empty($event_params)) {
         $this->pushService->push($event_name, $event_params);
       }
@@ -224,13 +213,7 @@ class EventSubscriber implements EventSubscriberInterface {
    */
   public function handleBeginCheckout(OrderEvent $event): void {
     $order = $event->getOrder();
-
-    $event_params = [
-      'value' => floatval($order->getSubtotalPrice()->getNumber()),
-      'currency' => $order->getTotalPrice()->getCurrencyCode(),
-      'items' => $this->buildService->getOrderItems($order),
-    ];
-
+    $event_params = $this->buildService->buildOrderEventParams($order);
     $this->pushService->push('begin_checkout', $event_params);
   }
 
@@ -243,32 +226,7 @@ class EventSubscriber implements EventSubscriberInterface {
   public function handleOrderPlace(WorkflowTransitionEvent $event): void {
     /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
     $order = $event->getEntity();
-
-    // Order doesn't have any order items.
-    if ($order->getSubtotalPrice() === NULL) {
-      return;
-    }
-
-    $event_params = [
-      'transaction_id' => $order->getOrderNumber(),
-      'value' => floatval($order->getSubtotalPrice()->getNumber()),
-      'currency' => $order->getTotalPrice()->getCurrencyCode(),
-      'items' => $this->buildService->getOrderItems($order),
-    ];
-
-    if (
-      $this->moduleHandler->moduleExists('commerce_shipping') &&
-      $order->hasField('shipments') &&
-      $order->get('shipments')->isEmpty() === FALSE
-    ) {
-      $shipping_cost = 0;
-      foreach ($order->get('shipments')->referencedEntities() as $shipment) {
-        /** @var \Drupal\commerce_shipping\Entity\ShipmentInterface $shipment */
-        $shipping_cost += (float) $shipment->getAmount()->getNumber();
-      }
-      $event_params['shipping'] = $shipping_cost;
-    }
-
+    $event_params = $this->buildService->buildOrderEventParams($order, TRUE, TRUE);
     $this->pushService->push('purchase', $event_params);
   }
 

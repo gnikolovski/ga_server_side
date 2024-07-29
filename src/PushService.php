@@ -7,6 +7,7 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Config\ImmutableConfig;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Logger\LoggerChannelInterface;
+use Drupal\Core\Session\AccountInterface;
 use GuzzleHttp\Client;
 
 /**
@@ -21,6 +22,13 @@ class PushService {
   const GA_PRODUCTION_ENDPOINT = '/mp/collect';
 
   const CLIENT_ID_KEY = 'ga4_client_id';
+
+  /**
+   * The current user.
+   *
+   * @var \Drupal\Core\Session\AccountInterface
+   */
+  private AccountInterface $currentUser;
 
   /**
    * The config.
@@ -46,6 +54,8 @@ class PushService {
   /**
    * Constructs a PushService object.
    *
+   * @param \Drupal\Core\Session\AccountInterface $current_user
+   *   The current user.
    * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The config factory.
    * @param \Drupal\Component\Uuid\UuidInterface $uuid
@@ -54,17 +64,19 @@ class PushService {
    *   The logger factory.
    */
   public function __construct(
+    AccountInterface $current_user,
     ConfigFactoryInterface $config_factory,
     UuidInterface $uuid,
-    LoggerChannelFactoryInterface $logger_factory,
+    LoggerChannelFactoryInterface $logger_factory
   ) {
+    $this->currentUser = $current_user;
     $this->config = $config_factory->get('ga_server_side.settings');
     $this->uuid = $uuid;
     $this->logger = $logger_factory->get('ga_server_side');
   }
 
   /**
-   * Gets the client ID.
+   * Gets or generates the client ID.
    *
    * @return string
    *   The client ID.
@@ -98,56 +110,35 @@ class PushService {
   protected function getClientId(): string {
     // @codingStandardsIgnoreStart
     if (!isset($_COOKIE['_ga'])) {
-      return $this->generateClientId();
+      $client_id = $this->generateClientId();
+      if ($this->config->get('log_client_and_session_id') === TRUE) {
+        $this->logger->debug('Cookie _ga not found. Falling back to a randomly generated client ID: @client_id', [
+          '@client_id' => $client_id,
+        ]);
+      }
+      return $client_id;
     }
 
     $cookie_value = $_COOKIE['_ga'];
     // @codingStandardsIgnoreEnd
     $parts = explode('.', $cookie_value);
     if (count($parts) < 4) {
-      return $this->generateClientId();
+      $client_id = $this->generateClientId();
+      if ($this->config->get('log_client_and_session_id') === TRUE) {
+        $this->logger->debug('Cookie _ga found, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
+          '@client_id' => $client_id,
+        ]);
+      }
+      return $client_id;
     }
 
-    return $parts[2] . '.' . $parts[3];
-  }
-
-  /**
-   * Gets the microtime timestamp.
-   *
-   * @return string
-   *   The microtime timestamp.
-   */
-  protected function getMicrotimeTimestamp(): string {
-    $microtime = microtime(TRUE);
-    return sprintf('%0.0f', $microtime * 1000000);
-  }
-
-  /**
-   * Gets the session ID.
-   *
-   * @return string|null
-   *   The session ID.
-   */
-  protected function getSessionId(): ?string {
-    $measurement_id = $this->config->get('measurement_id');
-    $stream_id = str_replace('G-', '', $measurement_id);
-    $cookie_name = '_ga_' . $stream_id;
-
-    // @codingStandardsIgnoreStart
-    if (!isset($_COOKIE[$cookie_name])) {
-      return NULL;
+    $client_id = $parts[2] . '.' . $parts[3];
+    if ($this->config->get('log_client_and_session_id') === TRUE) {
+      $this->logger->debug('Cookie _ga found, client ID: @client_id', [
+        '@client_id' => $client_id,
+      ]);
     }
-
-    $cookie_value = $_COOKIE[$cookie_name];
-    // @codingStandardsIgnoreEnd
-    $pattern = "/GS1\.\d\.(\d+)\.\d+/";
-    preg_match($pattern, $cookie_value, $matches);
-
-    if (count($matches) > 1) {
-      return $matches[1];
-    }
-
-    return NULL;
+    return $client_id;
   }
 
   /**
@@ -166,8 +157,7 @@ class PushService {
 
     $measurement_id = $this->config->get('measurement_id');
     $api_secret = $this->config->get('api_secret');
-    $url .= '?measurement_id=' . $measurement_id . '&api_secret=' . $api_secret;
-
+    $url .= '?api_secret=' . $api_secret . '&measurement_id=' . $measurement_id;
     return $url;
   }
 
@@ -187,16 +177,17 @@ class PushService {
 
     $data = [
       'client_id' => $this->getClientId(),
-      'timestamp_micros' => $this->getMicrotimeTimestamp(),
-      'events' => [
+      'events' => [[
         'name' => $event_name,
         'params' => $event_params,
-      ],
+      ]],
     ];
 
-    $session_id = $this->getSessionId();
-    if (!empty($session_id)) {
-      $data['events']['params']['session_id'] = $session_id;
+    if (
+      $this->config->get('send_user_id') === TRUE &&
+      $this->currentUser->isAuthenticated()
+    ) {
+      $data['user_id'] = $this->currentUser->id();
     }
 
     try {
@@ -209,15 +200,18 @@ class PushService {
       ]);
 
       if ($this->config->get('log_events') === TRUE) {
-        $this->logger->debug('[@event_name] Response message: @response_message. Status code: @status_code.', [
+        $response_message = $response->getBody()->getContents();
+
+        $this->logger->debug('[@event_name] Response message: @response_message. Status code: @status_code. Event params: @event_params', [
           '@event_name' => $event_name,
-          '@response_message' => $response->getBody()->getContents(),
+          '@response_message' => !empty($response_message) ? $response_message : '-',
           '@status_code' => $response->getStatusCode(),
+          '@event_params' => json_encode($event_params),
         ]);
       }
     }
     catch (\Exception $e) {
-      $this->logger->error('Error while sending data to Google Analytics: @error.', [
+      $this->logger->error('Error while sending data to Google Analytics: @error', [
         '@error' => $e->getMessage(),
       ]);
     }
