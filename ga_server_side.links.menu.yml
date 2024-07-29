@@ -1,4 +1,4 @@
 ga_server_side.settings:
   title: 'Google Analytics - Server Side'
   route_name: 'ga_server_side.settings'
-  parent: 'system.admin_config_system'
+  parent: 'system.admin_config_services'
