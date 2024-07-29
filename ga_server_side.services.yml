@@ -1,0 +1,26 @@
+services:
+  ga_server_side.event_subscriber:
+    class: Drupal\ga_server_side\EventSubscriber\EventSubscriber
+    arguments:
+      - '@entity_type.manager'
+      - '@current_route_match'
+      - '@request_stack'
+      - '@module_handler'
+      - '@ga_server_side.build_service'
+      - '@ga_server_side.push_service'
+    tags:
+      - { name: event_subscriber }
+
+  ga_server_side.build_service:
+    class: Drupal\ga_server_side\BuildService
+    arguments:
+      - '@current_user'
+      - '@commerce_store.current_store'
+      - '@commerce_order.price_calculator'
+
+  ga_server_side.push_service:
+    class: Drupal\ga_server_side\PushService
+    arguments:
+      - '@config.factory'
+      - '@uuid'
+      - '@logger.factory'

@@ -1,0 +1,9 @@
+ga_server_side.settings:
+  path: '/admin/config/system/ga-server-side'
+  defaults:
+    _title: 'Google Analytics - Server Side'
+    _form: 'Drupal\ga_server_side\Form\SettingsForm'
+  requirements:
+    _permission: 'administer site configuration'
+  options:
+    _admin_route: TRUE

@@ -1,0 +1,275 @@
+<?php
+
+namespace Drupal\ga_server_side\EventSubscriber;
+
+use Drupal\commerce_cart\Event\CartEvents;
+use Drupal\commerce_cart\Event\CartOrderItemAddEvent;
+use Drupal\commerce_cart\Event\CartOrderItemRemoveEvent;
+use Drupal\commerce_cart\Event\CartOrderItemUpdateEvent;
+use Drupal\commerce_order\Event\OrderEvent;
+use Drupal\commerce_price\Calculator;
+use Drupal\commerce_product\Entity\ProductInterface;
+use Drupal\commerce_product\Entity\ProductVariationInterface;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
+use Drupal\Core\Http\RequestStack;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\ga_server_side\BuildService;
+use Drupal\ga_server_side\PushService;
+use Drupal\state_machine\Event\WorkflowTransitionEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\HttpKernel\KernelEvents;
+
+/**
+ * Defines the EventSubscriber class.
+ */
+class EventSubscriber implements EventSubscriberInterface {
+
+  /**
+   * The entity type manager.
+   *
+   * @var \Drupal\Core\Entity\EntityTypeManagerInterface
+   */
+  protected EntityTypeManagerInterface $entityTypeManager;
+
+  /**
+   * The current route match.
+   *
+   * @var \Drupal\Core\Routing\RouteMatchInterface
+   */
+  protected RouteMatchInterface $routeMatch;
+
+  /**
+   * The request stack.
+   *
+   * @var \Drupal\Core\Http\RequestStack
+   */
+  protected RequestStack $requestStack;
+
+  /**
+   * The module handler.
+   *
+   * @var \Drupal\Core\Extension\ModuleHandlerInterface
+   */
+  protected ModuleHandlerInterface $moduleHandler;
+
+  /**
+   * The build service.
+   *
+   * @var \Drupal\ga_server_side\BuildService
+   */
+  protected BuildService $buildService;
+
+  /**
+   * The push service.
+   *
+   * @var \Drupal\ga_server_side\PushService
+   */
+  protected PushService $pushService;
+
+  /**
+   * Constructs a new EventSubscriber object.
+   *
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   *   The entity type manager.
+   * @param \Drupal\Core\Routing\RouteMatchInterface $route_match
+   *   The route match.
+   * @param \Drupal\Core\Http\RequestStack $request_stack
+   *   The request stack.
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   *   The module handler.
+   * @param \Drupal\ga_server_side\BuildService $build_service
+   *   The build service.
+   * @param \Drupal\ga_server_side\PushService $push_service
+   *   The push service.
+   */
+  public function __construct(
+    EntityTypeManagerInterface $entity_type_manager,
+    RouteMatchInterface $route_match,
+    RequestStack $request_stack,
+    ModuleHandlerInterface $module_handler,
+    BuildService $build_service,
+    PushService $push_service
+  ) {
+    $this->entityTypeManager = $entity_type_manager;
+    $this->routeMatch = $route_match;
+    $this->requestStack = $request_stack;
+    $this->moduleHandler = $module_handler;
+    $this->buildService = $build_service;
+    $this->pushService = $push_service;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function getSubscribedEvents() {
+    return [
+      KernelEvents::REQUEST => ['handleViewItem', 28],
+      CartEvents::CART_ORDER_ITEM_ADD => ['handleOrderItemAdd'],
+      CartEvents::CART_ORDER_ITEM_REMOVE => ['handleOrderItemRemove'],
+      CartEvents::CART_ORDER_ITEM_UPDATE => ['handleOrderItemUpdate'],
+      'commerce_checkout.init' => ['handleBeginCheckout'],
+      'commerce_order.place.post_transition' => ['handleOrderPlace'],
+    ];
+  }
+
+  /**
+   * Handles the view item event.
+   *
+   * @param \Symfony\Component\HttpKernel\Event\RequestEvent $event
+   *   The request event.
+   */
+  public function handleViewItem(RequestEvent $event): void {
+    $product = $this->routeMatch->getParameter('commerce_product');
+
+    if (
+      $product instanceof ProductInterface &&
+      $event->getRequest()->getMethod() === 'GET' &&
+      $this->routeMatch->getRouteName() === 'entity.commerce_product.canonical'
+    ) {
+      $product_variation = $product->getDefaultVariation();
+
+      $request = $this->requestStack->getCurrentRequest();
+      $variation_id = $request->query->get('v');
+      if (!empty($variation_id)) {
+        $variation = $this->entityTypeManager
+          ->getStorage('commerce_product_variation')
+          ->load($variation_id);
+
+        if ($variation instanceof ProductVariationInterface) {
+          $product_variation = $variation;
+        }
+      }
+
+      if ($product_variation instanceof ProductVariationInterface) {
+        $event_params = $this->buildService->buildEventParams($product_variation, '1');
+        if (!empty($event_params)) {
+          $this->pushService->push('view_item', $event_params);
+        }
+      }
+    }
+  }
+
+  /**
+   * Handles the order item add event.
+   *
+   * @param \Drupal\commerce_cart\Event\CartOrderItemAddEvent $event
+   *   The order item add event.
+   */
+  public function handleOrderItemAdd(CartOrderItemAddEvent $event): void {
+    $order_item = $event->getOrderItem();
+    $purchased_entity = $order_item->getPurchasedEntity();
+
+    if ($purchased_entity instanceof ProductVariationInterface) {
+      $event_params = $this->buildService->buildEventParams($purchased_entity, strval($event->getQuantity()));
+      if (!empty($event_params)) {
+        $this->pushService->push('add_to_cart', $event_params);
+      }
+    }
+  }
+
+  /**
+   * Handles the order item remove event.
+   *
+   * @param \Drupal\commerce_cart\Event\CartOrderItemRemoveEvent $event
+   *   The order item remove event.
+   */
+  public function handleOrderItemRemove(CartOrderItemRemoveEvent $event): void {
+    $order_item = $event->getOrderItem();
+    $purchased_entity = $order_item->getPurchasedEntity();
+
+    if ($purchased_entity instanceof ProductVariationInterface) {
+      $event_params = $this->buildService->buildEventParams($purchased_entity, $order_item->getQuantity());
+      if (!empty($event_params)) {
+        $this->pushService->push('remove_from_cart', $event_params);
+      }
+    }
+  }
+
+  /**
+   * Handles the order item update event.
+   *
+   * @param \Drupal\commerce_cart\Event\CartOrderItemUpdateEvent $event
+   *   The order item update event.
+   */
+  public function handleOrderItemUpdate(CartOrderItemUpdateEvent $event): void {
+    $order_item = $event->getOrderItem();
+    $order_item_quantity = $order_item->getQuantity();
+
+    $original_order_item = $event->getOriginalOrderItem();
+    $original_order_item_quantity = $original_order_item->getQuantity();
+
+    $quantity = Calculator::subtract($order_item_quantity, $original_order_item_quantity);
+    $event_name = 'add_to_cart';
+    if (Calculator::compare($quantity, '0') == -1) {
+      $quantity = Calculator::multiply($quantity, '-1');
+      $event_name = 'remove_from_cart';
+    }
+
+    $purchased_entity = $order_item->getPurchasedEntity();
+    if ($purchased_entity instanceof ProductVariationInterface) {
+      $event_params = $this->buildService->buildEventParams($purchased_entity, $quantity);
+      if (!empty($event_params)) {
+        $this->pushService->push($event_name, $event_params);
+      }
+    }
+  }
+
+  /**
+   * Handles the begin checkout event.
+   *
+   * @param \Drupal\commerce_order\Event\OrderEvent $event
+   *   The order event.
+   */
+  public function handleBeginCheckout(OrderEvent $event): void {
+    $order = $event->getOrder();
+
+    $event_params = [
+      'value' => floatval($order->getSubtotalPrice()->getNumber()),
+      'currency' => $order->getTotalPrice()->getCurrencyCode(),
+      'items' => $this->buildService->getOrderItems($order),
+    ];
+
+    $this->pushService->push('begin_checkout', $event_params);
+  }
+
+  /**
+   * Handles the order place post transition event.
+   *
+   * @param \Drupal\state_machine\Event\WorkflowTransitionEvent $event
+   *   The order place post transition event.
+   */
+  public function handleOrderPlace(WorkflowTransitionEvent $event): void {
+    /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
+    $order = $event->getEntity();
+
+    // Order doesn't have any order items.
+    if ($order->getSubtotalPrice() === NULL) {
+      return;
+    }
+
+    $event_params = [
+      'transaction_id' => $order->getOrderNumber(),
+      'value' => floatval($order->getSubtotalPrice()->getNumber()),
+      'currency' => $order->getTotalPrice()->getCurrencyCode(),
+      'items' => $this->buildService->getOrderItems($order),
+    ];
+
+    if (
+      $this->moduleHandler->moduleExists('commerce_shipping') &&
+      $order->hasField('shipments') &&
+      $order->get('shipments')->isEmpty() === FALSE
+    ) {
+      $shipping_cost = 0;
+      foreach ($order->get('shipments')->referencedEntities() as $shipment) {
+        /** @var \Drupal\commerce_shipping\Entity\ShipmentInterface $shipment */
+        $shipping_cost += (float) $shipment->getAmount()->getNumber();
+      }
+      $event_params['shipping'] = $shipping_cost;
+    }
+
+    $this->pushService->push('purchase', $event_params);
+  }
+
+}
