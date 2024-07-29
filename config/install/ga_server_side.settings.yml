@@ -1,0 +1,15 @@
+measurement_id: ''
+api_secret: ''
+tracking_snippet_type: another_module
+ignore_admin_pages: true
+disable_for_admins: true
+gtm_container_id: ''
+enabled_events:
+  view_item: view_item
+  add_to_cart: add_to_cart
+  remove_from_cart: remove_from_cart
+  purchase: purchase
+send_user_id: false
+log_events: false
+log_client_and_session_id: false
+debug_mode: false

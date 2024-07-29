@@ -8,9 +8,33 @@ ga_server_side.settings:
     api_secret:
       type: string
       label: 'API secret'
-    debug_mode:
+    tracking_snippet_type:
+      type: string
+      label: 'How is Google Analytics 4 tracking snippet added to the website?'
+    ignore_admin_pages:
       type: boolean
-      label: 'Debug mode'
+      label: 'Ignore Admin pages'
+    disable_for_admins:
+      type: boolean
+      label: 'Disable for admins'
+    gtm_container_id:
+      type: string
+      label: 'GTM container ID'
+    enabled_events:
+      type: sequence
+      label: 'Enabled events'
+      sequence:
+        type: string
+        label: 'Event name'
+    send_user_id:
+      type: boolean
+      label: 'Send user ID'
     log_events:
       type: boolean
       label: 'Detailed event logging'
+    log_client_and_session_id:
+      type: boolean
+      label: 'Detailed client ID and session ID logging'
+    debug_mode:
+      type: boolean
+      label: 'Debug mode'
