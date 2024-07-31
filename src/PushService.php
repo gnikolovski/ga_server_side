@@ -177,10 +177,12 @@ class PushService {
 
     $data = [
       'client_id' => $this->getClientId(),
-      'events' => [[
-        'name' => $event_name,
-        'params' => $event_params,
-      ]],
+      'events' => [
+        [
+          'name' => $event_name,
+          'params' => $event_params,
+        ],
+      ],
     ];
 
     if (
