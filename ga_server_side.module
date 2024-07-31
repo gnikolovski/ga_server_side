@@ -5,6 +5,8 @@
  * Sends events directly to Google Analytics via HTTP requests.
  */
 
+use Drupal\Core\Cache\Cache;
+
 /**
  * Implements hook_page_attachments().
  */
@@ -23,8 +25,8 @@ function ga_server_side_page_attachments(array &$page): void {
   }
 
   $config = \Drupal::config('ga_server_side.settings');
-  $page['#cache']['contexts'][] = 'user.roles:administrator';
-  $page['#cache']['tags'][] = $config->getCacheTags();
+  $page['#cache']['tags'] = Cache::mergeTags($page['#cache']['tags'] ?? [], $config->getCacheTags());
+  $page['#cache']['contexts'] = Cache::mergeTags($page['#cache']['contexts'] ?? [], ['user.roles:administrator']);
 }
 
 /**
@@ -46,8 +48,8 @@ function ga_server_side_page_top(array &$page_top): void {
   }
 
   $config = \Drupal::config('ga_server_side.settings');
-  $page_top['#cache']['contexts'][] = 'user.roles:administrator';
-  $page_top['#cache']['tags'][] = $config->getCacheTags();
+  $page_top['#cache']['tags'] = Cache::mergeTags($page_top['#cache']['tags'] ?? [], $config->getCacheTags());
+  $page_top['#cache']['contexts'] = Cache::mergeTags($page_top['#cache']['contexts'] ?? [], ['user.roles:administrator']);
 }
 
 /**
@@ -64,7 +66,10 @@ function ga_server_side_is_enabled(): bool {
     return FALSE;
   }
 
-  if ($config->get('ignore_admin_pages') && $is_admin_page) {
+  if (
+    $config->get('ignore_admin_pages') &&
+    $is_admin_page
+  ) {
     return FALSE;
   }
 
