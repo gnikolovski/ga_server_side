@@ -64,7 +64,7 @@ class SettingsForm extends ConfigFormBase {
       '#description' => $this->t("If you don't have the tracking snippet inserted user sessions won't be tracked."),
       '#default_value' => $config->get('tracking_snippet_type') ?? 'another_module',
       '#options' => [
-        'another_module' => $this->t("By using another Drupal module / I want to use only server side tracking"),
+        'another_module' => $this->t('By using another Drupal module'),
         'gtm' => $this->t('I want to insert Google Tag Manager snippet (you need GTM container ID for this)'),
       ],
     ];
