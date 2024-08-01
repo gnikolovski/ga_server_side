@@ -1,0 +1,25 @@
+{
+    "name": "gnikolovski/ga_server_side",
+    "description": "Sends events directly to Google Analytics via HTTP requests..",
+    "type": "drupal-module",
+    "homepage": "https://gorannikolovski.com/blog/drupal-google-analytics-4-and-commerce-events",
+    "authors": [
+        {
+            "name": "Goran Nikolovski",
+            "email": "goran@gorannikolovski.com",
+            "homepage": "https://gorannikolovski.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://gorannikolovski.com/contact",
+        "email": "goran@gorannikolovski.com"
+    },
+    "license": "GPL-2.0+",
+    "minimum-stability": "dev",
+    "require": {
+        "drupal/commerce": "^2.27",
+        "drupal/core": "^9.5 || ^10 || ^11",
+        "php": ">=8.0"
+    }
+}
