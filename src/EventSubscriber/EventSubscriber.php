@@ -10,8 +10,9 @@ use Drupal\commerce_order\Event\OrderEvent;
 use Drupal\commerce_price\Calculator;
 use Drupal\commerce_product\Entity\ProductInterface;
 use Drupal\commerce_product\Entity\ProductVariationInterface;
+use Drupal\commerce_product\Event\ProductEvents;
+use Drupal\commerce_product\Event\ProductVariationAjaxChangeEvent;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
-use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\ga_server_side\BuildService;
 use Drupal\ga_server_side\PushService;
@@ -95,6 +96,7 @@ class EventSubscriber implements EventSubscriberInterface {
   public static function getSubscribedEvents() {
     return [
       KernelEvents::REQUEST => ['handleViewItem', 28],
+      ProductEvents::PRODUCT_VARIATION_AJAX_CHANGE => ['handleProductVariationChange'],
       CartEvents::CART_ORDER_ITEM_ADD => ['handleOrderItemAdd'],
       CartEvents::CART_ORDER_ITEM_REMOVE => ['handleOrderItemRemove'],
       CartEvents::CART_ORDER_ITEM_UPDATE => ['handleOrderItemUpdate'],
@@ -136,6 +138,23 @@ class EventSubscriber implements EventSubscriberInterface {
         if (!empty($event_params)) {
           $this->pushService->push('view_item', $event_params);
         }
+      }
+    }
+  }
+
+  /**
+   * Handles the view item event on variation change.
+   *
+   * @param \Drupal\commerce_product\Event\ProductVariationAjaxChangeEvent $ajax_change_event
+   *   The product variation ajax change event.
+   */
+  public function handleProductVariationChange(ProductVariationAjaxChangeEvent $ajax_change_event): void {
+    $product_variation = $ajax_change_event->getProductVariation();
+
+    if ($product_variation instanceof ProductVariationInterface) {
+      $event_params = $this->buildService->buildProductVariationEventParams($product_variation, '1');
+      if (!empty($event_params)) {
+        $this->pushService->push('view_item', $event_params);
       }
     }
   }
@@ -191,6 +210,7 @@ class EventSubscriber implements EventSubscriberInterface {
 
     $quantity = Calculator::subtract($order_item_quantity, $original_order_item_quantity);
     $event_name = 'add_to_cart';
+
     if (Calculator::compare($quantity, '0') === -1) {
       $quantity = Calculator::multiply($quantity, '-1');
       $event_name = 'remove_from_cart';

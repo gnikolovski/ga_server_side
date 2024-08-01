@@ -94,3 +94,4 @@ function ga_server_side_get_gtm_container_id(): string {
   $config = \Drupal::config('ga_server_side.settings');
   return (string) $config->get('gtm_container_id');
 }
+
