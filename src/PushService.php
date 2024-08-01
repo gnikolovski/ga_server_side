@@ -5,6 +5,7 @@ namespace Drupal\ga_server_side;
 use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Config\ImmutableConfig;
+use Drupal\Core\Http\RequestStack;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Logger\LoggerChannelInterface;
 use Drupal\Core\Session\AccountInterface;
@@ -38,11 +39,11 @@ class PushService {
   protected ImmutableConfig $config;
 
   /**
-   * The logger.
+   * The logger factory.
    *
-   * @var \Drupal\Core\Logger\LoggerChannelInterface
+   * @var \Drupal\Core\Logger\LoggerChannelFactoryInterface
    */
-  protected LoggerChannelInterface $logger;
+  protected LoggerChannelFactoryInterface $loggerFactory;
 
   /**
    * The uuid service.
@@ -50,6 +51,13 @@ class PushService {
    * @var \Drupal\Component\Uuid\UuidInterface
    */
   protected UuidInterface $uuid;
+
+  /**
+   * The request stack.
+   *
+   * @var \Drupal\Core\Http\RequestStack
+   */
+  protected RequestStack $requestStack;
 
   /**
    * Constructs a PushService object.
@@ -62,17 +70,21 @@ class PushService {
    *   The uuid service.
    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
    *   The logger factory.
+   * @param \Drupal\Core\Http\RequestStack $request_stack
+   *   The request stack.
    */
   public function __construct(
     AccountInterface $current_user,
     ConfigFactoryInterface $config_factory,
     UuidInterface $uuid,
-    LoggerChannelFactoryInterface $logger_factory
+    LoggerChannelFactoryInterface $logger_factory,
+    RequestStack $request_stack
   ) {
     $this->currentUser = $current_user;
     $this->config = $config_factory->get('ga_server_side.settings');
     $this->uuid = $uuid;
-    $this->logger = $logger_factory->get('ga_server_side');
+    $this->loggerFactory = $logger_factory;
+    $this->requestStack = $request_stack;
   }
 
   /**
@@ -82,11 +94,11 @@ class PushService {
    *   The client ID.
    */
   protected function generateClientId(): string {
-    // @codingStandardsIgnoreStart
-    if (isset($_COOKIE[self::CLIENT_ID_KEY])) {
-      $client_id = $_COOKIE[self::CLIENT_ID_KEY];
+    $request = $this->requestStack->getCurrentRequest();
+
+    if ($request->cookies->has(self::CLIENT_ID_KEY)) {
+      $client_id = $request->cookies->get(self::CLIENT_ID_KEY);
     }
-    // @codingStandardsIgnoreEnd
     elseif (isset($_SESSION[self::CLIENT_ID_KEY])) {
       $client_id = $_SESSION[self::CLIENT_ID_KEY];
     }
@@ -108,24 +120,24 @@ class PushService {
    *   The client ID.
    */
   protected function getClientId(): string {
-    // @codingStandardsIgnoreStart
-    if (!isset($_COOKIE['_ga'])) {
+    $request = $this->requestStack->getCurrentRequest();
+
+    if ($request->cookies->has('_ga') === FALSE) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->logger->debug('Cookie _ga not found. Falling back to a randomly generated client ID: @client_id', [
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga not found. Falling back to a randomly generated client ID: @client_id', [
           '@client_id' => $client_id,
         ]);
       }
       return $client_id;
     }
 
-    $cookie_value = $_COOKIE['_ga'];
-    // @codingStandardsIgnoreEnd
+    $cookie_value = $request->cookies->get('_ga');
     $parts = explode('.', $cookie_value);
     if (count($parts) < 4) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->logger->debug('Cookie _ga found, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
           '@client_id' => $client_id,
         ]);
       }
@@ -134,10 +146,11 @@ class PushService {
 
     $client_id = $parts[2] . '.' . $parts[3];
     if ($this->config->get('log_client_and_session_id') === TRUE) {
-      $this->logger->debug('Cookie _ga found, client ID: @client_id', [
+      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found, client ID: @client_id', [
         '@client_id' => $client_id,
       ]);
     }
+
     return $client_id;
   }
 
@@ -204,7 +217,7 @@ class PushService {
       if ($this->config->get('log_events') === TRUE) {
         $response_message = $response->getBody()->getContents();
 
-        $this->logger->debug('[@event_name] Response message: @response_message. Status code: @status_code. Event params: @event_params', [
+        $this->loggerFactory->get('ga_server_side:event_response')->debug('[@event_name] Response message: @response_message. Status code: @status_code. Event params: @event_params', [
           '@event_name' => $event_name,
           '@response_message' => !empty($response_message) ? $response_message : '-',
           '@status_code' => $response->getStatusCode(),
@@ -213,7 +226,7 @@ class PushService {
       }
     }
     catch (\Exception $e) {
-      $this->logger->error('Error while sending data to Google Analytics: @error', [
+      $this->loggerFactory->get('ga_server_side:event_response')->error('Error while sending data to Google Analytics: @error', [
         '@error' => $e->getMessage(),
       ]);
     }
