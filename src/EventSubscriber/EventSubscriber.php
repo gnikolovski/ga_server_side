@@ -90,7 +90,7 @@ class EventSubscriber implements EventSubscriberInterface {
   /**
    * {@inheritdoc}
    */
-  public static function getSubscribedEvents() {
+  public static function getSubscribedEvents(): array {
     return [
       ProductEvents::PRODUCT_VARIATION_AJAX_CHANGE => ['handleProductVariationChange'],
       CartEvents::CART_ORDER_ITEM_ADD => ['handleOrderItemAdd'],
