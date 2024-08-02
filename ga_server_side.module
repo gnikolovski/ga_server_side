@@ -5,7 +5,11 @@
  * Sends events directly to Google Analytics via HTTP requests.
  */
 
+use Drupal\commerce_product\Entity\ProductInterface;
+use Drupal\commerce_product\Entity\ProductVariationInterface;
 use Drupal\Core\Cache\Cache;
+use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
+use Drupal\Core\Url;
 
 /**
  * Implements hook_page_attachments().
@@ -95,3 +99,64 @@ function ga_server_side_get_gtm_container_id(): string {
   return (string) $config->get('gtm_container_id');
 }
 
+/**
+ * Implements hook_ENTITY_TYPE_view() for product entities.
+ */
+function ga_server_side_commerce_product_view(
+  array &$build,
+  ProductInterface $product,
+  EntityViewDisplayInterface $display,
+  $view_mode
+): void {
+  $build['#cache']['contexts'] = Cache::mergeContexts($build['#cache']['contexts'], [
+    'user.roles',
+    'url.path',
+    'url.query_args',
+  ]);
+
+  $config = \Drupal::config('ga_server_side.settings');
+  $build['#cache']['tags'] = Cache::mergeTags($page_top['#cache']['tags'] ?? [], $config->getCacheTags());
+
+  if (
+    $product->isNew() === FALSE &&
+    ga_server_side_is_product_page($product) &&
+    empty($product->in_preview) &&
+    ga_server_side_is_enabled()
+  ) {
+    $build['#attached']['library'][] = 'ga_server_side/view_item';
+
+    // Retrieve the current product variation (default or from the 'v' query
+    // parameter).
+    /** @var \Drupal\commerce_product\ProductVariationStorageInterface $product_variation_storage */
+    $product_variation_storage = \Drupal::entityTypeManager()->getStorage('commerce_product_variation');
+    $product_variation = $product_variation_storage->loadFromContext($product);
+
+    if ($product_variation instanceof ProductVariationInterface) {
+      // Pass product variation data to JavaScript.
+      $url = Url::fromRoute('ga_server_side.view_item_endpoint');
+      $build['#attached']['drupalSettings']['ga_server_side']['view_item']['url'] = $url->toString();
+      $build['#attached']['drupalSettings']['ga_server_side']['view_item']['data'] = [
+        'product_variation_id' => $product_variation->id(),
+      ];
+    }
+  }
+}
+
+/**
+ * Checks whether the current page is the full page view of passed-in product.
+ *
+ * @param \Drupal\commerce_product\Entity\ProductInterface $product
+ *   A product entity.
+ *
+ * @return bool
+ *   Return TRUE if this is a full product view; otherwise, return FALSE.
+ */
+function ga_server_side_is_product_page(ProductInterface $product): bool {
+  $route_match = \Drupal::routeMatch();
+
+  if ($route_match->getRouteName() === 'entity.commerce_product.canonical') {
+    $product_param = $route_match->getParameter('commerce_product');
+  }
+
+  return (!empty($product_param) && $product_param->id() === $product->id());
+}

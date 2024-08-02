@@ -7,3 +7,13 @@ ga_server_side.settings:
     _permission: 'administer site configuration'
   options:
     _admin_route: TRUE
+
+ga_server_side.view_item_endpoint:
+  path: '/ga-server-side/v1/view-item'
+  methods: [POST]
+  defaults:
+    _controller: '\Drupal\ga_server_side\Controller\GaServerSideController::viewItem'
+  requirements:
+    _permission: 'access content'
+  options:
+    no_cache: TRUE

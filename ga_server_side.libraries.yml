@@ -1,0 +1,6 @@
+view_item:
+  version: VERSION
+  js:
+    js/view-item.js: {}
+  dependencies:
+    - core/drupalSettings

@@ -8,7 +8,6 @@ use Drupal\commerce_cart\Event\CartOrderItemRemoveEvent;
 use Drupal\commerce_cart\Event\CartOrderItemUpdateEvent;
 use Drupal\commerce_order\Event\OrderEvent;
 use Drupal\commerce_price\Calculator;
-use Drupal\commerce_product\Entity\ProductInterface;
 use Drupal\commerce_product\Entity\ProductVariationInterface;
 use Drupal\commerce_product\Event\ProductEvents;
 use Drupal\commerce_product\Event\ProductVariationAjaxChangeEvent;
@@ -19,8 +18,6 @@ use Drupal\ga_server_side\PushService;
 use Drupal\state_machine\Event\WorkflowTransitionEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\HttpKernel\Event\RequestEvent;
-use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
  * Defines the EventSubscriber class.
@@ -95,7 +92,6 @@ class EventSubscriber implements EventSubscriberInterface {
    */
   public static function getSubscribedEvents() {
     return [
-      KernelEvents::REQUEST => ['handleViewItem', 28],
       ProductEvents::PRODUCT_VARIATION_AJAX_CHANGE => ['handleProductVariationChange'],
       CartEvents::CART_ORDER_ITEM_ADD => ['handleOrderItemAdd'],
       CartEvents::CART_ORDER_ITEM_REMOVE => ['handleOrderItemRemove'],
@@ -103,43 +99,6 @@ class EventSubscriber implements EventSubscriberInterface {
       'commerce_checkout.init' => ['handleBeginCheckout'],
       'commerce_order.place.post_transition' => ['handleOrderPlace'],
     ];
-  }
-
-  /**
-   * Handles the view item event.
-   *
-   * @param \Symfony\Component\HttpKernel\Event\RequestEvent $event
-   *   The request event.
-   */
-  public function handleViewItem(RequestEvent $event): void {
-    $product = $this->routeMatch->getParameter('commerce_product');
-
-    if (
-      $product instanceof ProductInterface &&
-      $event->getRequest()->getMethod() === 'GET' &&
-      $this->routeMatch->getRouteName() === 'entity.commerce_product.canonical'
-    ) {
-      $product_variation = $product->getDefaultVariation();
-
-      $request = $this->requestStack->getCurrentRequest();
-      $variation_id = $request->query->get('v');
-      if (is_numeric($variation_id)) {
-        $variation = $this->entityTypeManager
-          ->getStorage('commerce_product_variation')
-          ->load($variation_id);
-
-        if ($variation instanceof ProductVariationInterface) {
-          $product_variation = $variation;
-        }
-      }
-
-      if ($product_variation instanceof ProductVariationInterface) {
-        $event_params = $this->buildService->buildProductVariationEventParams($product_variation, '1');
-        if (!empty($event_params)) {
-          $this->pushService->push('view_item', $event_params);
-        }
-      }
-    }
   }
 
   /**
