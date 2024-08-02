@@ -115,7 +115,7 @@ function ga_server_side_commerce_product_view(
   ]);
 
   $config = \Drupal::config('ga_server_side.settings');
-  $build['#cache']['tags'] = Cache::mergeTags($page_top['#cache']['tags'] ?? [], $config->getCacheTags());
+  $build['#cache']['tags'] = Cache::mergeTags($build['#cache']['tags'] ?? [], $config->getCacheTags());
 
   if (
     $product->isNew() === FALSE &&
