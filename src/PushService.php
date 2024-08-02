@@ -116,16 +116,20 @@ class PushService {
   /**
    * Gets the client ID.
    *
+   * @param string $event_name
+   *   The event name.
+   *
    * @return string
    *   The client ID.
    */
-  protected function getClientId(): string {
+  protected function getClientId(string $event_name): string {
     $request = $this->requestStack->getCurrentRequest();
 
     if ($request->cookies->has('_ga') === FALSE) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga not found. Falling back to a randomly generated client ID: @client_id', [
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga not found while sending @event_name. Falling back to a randomly generated client ID: @client_id', [
+          '@event_name' => $event_name,
           '@client_id' => $client_id,
         ]);
       }
@@ -137,7 +141,8 @@ class PushService {
     if (count($parts) < 4) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found while sending @event_name, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
+          '@event_name' => $event_name,
           '@client_id' => $client_id,
         ]);
       }
@@ -146,7 +151,8 @@ class PushService {
 
     $client_id = $parts[2] . '.' . $parts[3];
     if ($this->config->get('log_client_and_session_id') === TRUE) {
-      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found, client ID: @client_id', [
+      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found while sending @event_name, client ID: @client_id', [
+        '@event_name' => $event_name,
         '@client_id' => $client_id,
       ]);
     }
@@ -189,7 +195,7 @@ class PushService {
     ]);
 
     $data = [
-      'client_id' => $this->getClientId(),
+      'client_id' => $this->getClientId($event_name),
       'events' => [
         [
           'name' => $event_name,
