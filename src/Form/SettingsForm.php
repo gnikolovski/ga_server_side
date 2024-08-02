@@ -102,20 +102,6 @@ class SettingsForm extends ConfigFormBase {
       ],
     ];
 
-    $form['events'] = [
-      '#type' => 'details',
-      '#title' => $this->t('Enabled events'),
-      '#open' => FALSE,
-    ];
-
-    $event_names = $this->getEventNames();
-    $form['events']['enabled_events'] = [
-      '#type' => 'checkboxes',
-      '#description' => $this->t("To ensure the <em>begin_checkout</em> event functions correctly, you must first apply <a href='https://www.drupal.org/files/issues/2020-01-19/3104564-11.patch' target='_blank'>this Drupal Commerce patch</a>."),
-      '#options' => $event_names,
-      '#default_value' => $config->get('enabled_events') ?? [],
-    ];
-
     $form['advanced'] = [
       '#type' => 'details',
       '#title' => $this->t('Advanced'),

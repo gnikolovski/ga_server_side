@@ -20,12 +20,6 @@ ga_server_side.settings:
     gtm_container_id:
       type: string
       label: 'GTM container ID'
-    enabled_events:
-      type: sequence
-      label: 'Enabled events'
-      sequence:
-        type: string
-        label: 'Event name'
     send_user_id:
       type: boolean
       label: 'Send user ID'
