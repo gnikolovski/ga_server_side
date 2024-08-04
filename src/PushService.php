@@ -248,7 +248,7 @@ class PushService {
 
     $data = [
       'client_id' => $this->getClientId($event_name),
-      'timestamp' => microtime(true),
+      'timestamp' => microtime(TRUE),
       'events' => [
         [
           'name' => $event_name,
