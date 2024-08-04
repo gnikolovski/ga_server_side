@@ -137,7 +137,7 @@ class PushService {
 
     $cookie_value = $request->cookies->get('_ga');
     $parts = explode('.', $cookie_value);
-    if (count($parts) < 4) {
+    if (count($parts) !== 4) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
         $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found while sending @event_name, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
@@ -157,6 +157,54 @@ class PushService {
     }
 
     return $client_id;
+  }
+
+  /**
+   * Gets the session ID.
+   *
+   * @param string $event_name
+   *   The event name.
+   *
+   * @return string|null
+   *   The session ID.
+   */
+  protected function getSessionId(string $event_name): ?string {
+    $request = $this->requestStack->getCurrentRequest();
+    $measurement_id = str_replace('G-', '', $this->config->get('measurement_id'));
+    $cookie_name = '_ga_' . $measurement_id;
+
+    if ($request->cookies->has($cookie_name) === FALSE) {
+      if ($this->config->get('log_client_and_session_id') === TRUE) {
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name not found while sending @event_name.', [
+          '@cookie_name' => $cookie_name,
+          '@event_name' => $event_name,
+        ]);
+      }
+      return NULL;
+    }
+
+    $cookie_value = $request->cookies->get($cookie_name);
+    $parts = explode('.', $cookie_value);
+    if (count($parts) !== 9) {
+      if ($this->config->get('log_client_and_session_id') === TRUE) {
+        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name found while sending @event_name, but it is malformed.', [
+          '@cookie_name' => $cookie_name,
+          '@event_name' => $event_name,
+        ]);
+      }
+      return NULL;
+    }
+
+    $session_id = $parts[2];
+    if ($this->config->get('log_client_and_session_id') === TRUE) {
+      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name found while sending @event_name, session ID: @session_id.', [
+        '@cookie_name' => $cookie_name,
+        '@event_name' => $event_name,
+        '@session_id' => $session_id,
+      ]);
+    }
+
+    return $session_id;
   }
 
   /**
@@ -193,8 +241,14 @@ class PushService {
       'timeout' => 5,
     ]);
 
+    $session_id = $this->getSessionId($event_name);
+    if (!empty($session_id)) {
+      $event_params['session_id'] = $session_id;
+    }
+
     $data = [
       'client_id' => $this->getClientId($event_name),
+      'timestamp' => microtime(true),
       'events' => [
         [
           'name' => $event_name,
