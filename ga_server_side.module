@@ -106,7 +106,7 @@ function ga_server_side_commerce_product_view(
   array &$build,
   ProductInterface $product,
   EntityViewDisplayInterface $display,
-  $view_mode
+  $view_mode,
 ): void {
   $build['#cache']['contexts'] = Cache::mergeContexts($build['#cache']['contexts'], [
     'user.roles',

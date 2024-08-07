@@ -78,7 +78,7 @@ class EventSubscriber implements EventSubscriberInterface {
     RouteMatchInterface $route_match,
     RequestStack $request_stack,
     BuildService $build_service,
-    PushService $push_service
+    PushService $push_service,
   ) {
     $this->entityTypeManager = $entity_type_manager;
     $this->routeMatch = $route_match;

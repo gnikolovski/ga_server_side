@@ -60,7 +60,7 @@ class BuildService {
     AccountInterface $current_user,
     ModuleHandlerInterface $module_handler,
     CurrentStoreInterface $current_store,
-    PriceCalculatorInterface $price_calculator
+    PriceCalculatorInterface $price_calculator,
   ) {
     $this->currentUser = $current_user;
     $this->moduleHandler = $module_handler;

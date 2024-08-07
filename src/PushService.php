@@ -77,7 +77,7 @@ class PushService {
     ConfigFactoryInterface $config_factory,
     UuidInterface $uuid,
     LoggerChannelFactoryInterface $logger_factory,
-    RequestStack $request_stack
+    RequestStack $request_stack,
   ) {
     $this->currentUser = $current_user;
     $this->config = $config_factory->get('ga_server_side.settings');
