@@ -2,6 +2,9 @@ ga_server_side.settings:
   type: config_object
   label: 'Google Analytics - Server Side'
   mapping:
+    enabled:
+      type: boolean
+      label: 'Enabled'
     measurement_id:
       type: string
       label: 'Measurement ID'

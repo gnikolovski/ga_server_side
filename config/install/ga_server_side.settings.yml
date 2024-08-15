@@ -1,3 +1,4 @@
+enabled: true
 measurement_id: ''
 api_secret: ''
 tracking_snippet_type: another_module

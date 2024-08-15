@@ -30,10 +30,21 @@ class SettingsForm extends ConfigFormBase {
   public function buildForm(array $form, FormStateInterface $form_state) {
     $config = $this->config('ga_server_side.settings');
 
+    $form['enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable Measurement Protocol'),
+      '#default_value' => $config->get('enabled'),
+    ];
+
     $form['measurement_protocol'] = [
       '#type' => 'details',
       '#title' => $this->t('Measurement Protocol (Google Analytics 4)'),
       '#open' => FALSE,
+      '#states' => [
+        'visible' => [
+          ':input[name="enabled"]' => ['checked' => TRUE],
+        ],
+      ],
     ];
 
     $form['measurement_protocol']['measurement_id'] = [
@@ -56,6 +67,11 @@ class SettingsForm extends ConfigFormBase {
       '#type' => 'details',
       '#title' => $this->t('Tracking snippet'),
       '#open' => FALSE,
+      '#states' => [
+        'visible' => [
+          ':input[name="enabled"]' => ['checked' => TRUE],
+        ],
+      ],
     ];
 
     $form['tracking_snippet']['tracking_snippet_type'] = [
@@ -106,6 +122,11 @@ class SettingsForm extends ConfigFormBase {
       '#type' => 'details',
       '#title' => $this->t('Advanced'),
       '#open' => FALSE,
+      '#states' => [
+        'visible' => [
+          ':input[name="enabled"]' => ['checked' => TRUE],
+        ],
+      ],
     ];
 
     $form['advanced']['send_user_id'] = [
