@@ -8,7 +8,9 @@ use Drupal\commerce_order\PriceCalculatorInterface;
 use Drupal\commerce_price\Calculator;
 use Drupal\commerce_product\Entity\ProductVariationInterface;
 use Drupal\commerce_store\CurrentStoreInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
+use Drupal\Core\Routing\AdminContext;
 use Drupal\Core\Session\AccountInterface;
 
 /**
@@ -17,55 +19,80 @@ use Drupal\Core\Session\AccountInterface;
 class BuildService {
 
   /**
-   * The current user.
-   *
-   * @var \Drupal\Core\Session\AccountInterface
-   */
-  private AccountInterface $currentUser;
-
-  /**
-   * The module handler.
-   *
-   * @var \Drupal\Core\Extension\ModuleHandlerInterface
-   */
-  protected ModuleHandlerInterface $moduleHandler;
-
-  /**
-   * The current store.
-   *
-   * @var \Drupal\commerce_store\CurrentStoreInterface
-   */
-  protected CurrentStoreInterface $currentStore;
-
-  /**
-   * The price calculator.
-   *
-   * @var \Drupal\commerce_order\PriceCalculatorInterface
-   */
-  protected PriceCalculatorInterface $priceCalculator;
-
-  /**
    * Constructs a new BuildService object.
    *
-   * @param \Drupal\Core\Session\AccountInterface $current_user
+   * @param \Drupal\Core\Session\AccountInterface $currentUser
    *   The current user.
-   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $moduleHandler
    *   The module handler.
-   * @param \Drupal\commerce_store\CurrentStoreInterface $current_store
+   * @param \Drupal\commerce_store\CurrentStoreInterface $currentStore
    *   The current store.
-   * @param \Drupal\commerce_order\PriceCalculatorInterface $price_calculator
+   * @param \Drupal\commerce_order\PriceCalculatorInterface $priceCalculator
    *   The price calculator.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $configFactory
+   *   The config factory.
+   * @param \Drupal\Core\Routing\AdminContext $routerAdminContext
+   *   The router admin context service.
    */
   public function __construct(
-    AccountInterface $current_user,
-    ModuleHandlerInterface $module_handler,
-    CurrentStoreInterface $current_store,
-    PriceCalculatorInterface $price_calculator,
-  ) {
-    $this->currentUser = $current_user;
-    $this->moduleHandler = $module_handler;
-    $this->currentStore = $current_store;
-    $this->priceCalculator = $price_calculator;
+    protected AccountInterface $currentUser,
+    protected ModuleHandlerInterface $moduleHandler,
+    protected CurrentStoreInterface $currentStore,
+    protected PriceCalculatorInterface $priceCalculator,
+    protected ConfigFactoryInterface $configFactory,
+    protected AdminContext $routerAdminContext,
+  ) {}
+
+  /**
+   * Checks if the Measurement Protocol is enabled.
+   *
+   * @return bool
+   *   TRUE if the Measurement Protocol is enabled, FALSE otherwise.
+   */
+  public function isMeasurementProtocolEnabled(): bool {
+    $config = $this->configFactory->get('ga_server_side.settings');
+
+    $enabled = $config->get('enabled');
+    if ($enabled === FALSE) {
+      return FALSE;
+    }
+
+    $is_admin_page = $this->routerAdminContext->isAdminRoute();
+    if ($config->get('ignore_admin_pages') === TRUE && $is_admin_page) {
+      return FALSE;
+    }
+
+    if (
+      $config->get('disable_for_admins') === TRUE &&
+      in_array('administrator', $this->currentUser->getRoles())
+    ) {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  /**
+   * Checks if the tracking snippet is enabled.
+   *
+   * @return bool
+   *   TRUE if tracking snippet is enabled, FALSE otherwise.
+   */
+  protected function isTrackingSnippetEnabled(): bool {
+    $tracking_snippet_type = $this->configFactory
+      ->get('ga_server_side.settings')
+      ->get('tracking_snippet_type');
+    return $tracking_snippet_type === 'gtm';
+  }
+
+  /**
+   * Checks if the tracking snippet should be inserted.
+   *
+   * @return bool
+   *   TRUE if tracking snippet should be inserted, FALSE otherwise.
+   */
+  public function shouldInsertTrackingSnippet(): bool {
+    return $this->isMeasurementProtocolEnabled() && $this->isTrackingSnippetEnabled();
   }
 
   /**

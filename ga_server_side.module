@@ -15,7 +15,10 @@ use Drupal\Core\Url;
  * Implements hook_page_attachments().
  */
 function ga_server_side_page_attachments(array &$page): void {
-  if (ga_server_side_is_enabled()) {
+  /** @var \Drupal\ga_server_side\BuildService $builder_service */
+  $builder_service = \Drupal::service('ga_server_side.build_service');
+
+  if ($builder_service->shouldInsertTrackingSnippet()) {
     $script = "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
                new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
                j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -37,7 +40,10 @@ function ga_server_side_page_attachments(array &$page): void {
  * Implements hook_page_top().
  */
 function ga_server_side_page_top(array &$page_top): void {
-  if (ga_server_side_is_enabled()) {
+  /** @var \Drupal\ga_server_side\BuildService $builder_service */
+  $builder_service = \Drupal::service('ga_server_side.build_service');
+
+  if ($builder_service->shouldInsertTrackingSnippet()) {
     $page_top['gtm'] = [
       '#noscript' => TRUE,
       '#type' => 'html_tag',
@@ -54,38 +60,6 @@ function ga_server_side_page_top(array &$page_top): void {
   $config = \Drupal::config('ga_server_side.settings');
   $page_top['#cache']['tags'] = Cache::mergeTags($page_top['#cache']['tags'] ?? [], $config->getCacheTags());
   $page_top['#cache']['contexts'] = Cache::mergeTags($page_top['#cache']['contexts'] ?? [], ['user.roles:administrator']);
-}
-
-/**
- * Check if we should insert tracking snippet.
- *
- * @return bool
- *   TRUE if we should insert tracking snippet, FALSE otherwise.
- */
-function ga_server_side_is_enabled(): bool {
-  $config = \Drupal::config('ga_server_side.settings');
-  $is_admin_page = \Drupal::service('router.admin_context')->isAdminRoute();
-
-  if ($config->get('tracking_snippet_type') !== 'gtm') {
-    return FALSE;
-  }
-
-  if (
-    $config->get('ignore_admin_pages') &&
-    $is_admin_page
-  ) {
-    return FALSE;
-  }
-
-  $current_user = \Drupal::currentUser();
-  if (
-    $config->get('disable_for_admins') &&
-    in_array('administrator', $current_user->getRoles())
-  ) {
-    return FALSE;
-  }
-
-  return TRUE;
 }
 
 /**
@@ -117,11 +91,14 @@ function ga_server_side_commerce_product_view(
   $config = \Drupal::config('ga_server_side.settings');
   $build['#cache']['tags'] = Cache::mergeTags($build['#cache']['tags'] ?? [], $config->getCacheTags());
 
+  /** @var \Drupal\ga_server_side\BuildService $builder_service */
+  $builder_service = \Drupal::service('ga_server_side.build_service');
+
   if (
     $product->isNew() === FALSE &&
     ga_server_side_is_product_page($product) &&
     empty($product->in_preview) &&
-    ga_server_side_is_enabled()
+    $builder_service->isMeasurementProtocolEnabled()
   ) {
     $build['#attached']['library'][] = 'ga_server_side/view_item';
 

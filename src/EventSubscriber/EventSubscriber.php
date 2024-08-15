@@ -108,12 +108,14 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The product variation ajax change event.
    */
   public function handleProductVariationChange(ProductVariationAjaxChangeEvent $ajax_change_event): void {
-    $product_variation = $ajax_change_event->getProductVariation();
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      $product_variation = $ajax_change_event->getProductVariation();
 
-    if ($product_variation instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildProductVariationEventParams($product_variation, '1');
-      if (!empty($event_params)) {
-        $this->pushService->push('view_item', $event_params);
+      if ($product_variation instanceof ProductVariationInterface) {
+        $event_params = $this->buildService->buildProductVariationEventParams($product_variation, '1');
+        if (!empty($event_params)) {
+          $this->pushService->push('view_item', $event_params);
+        }
       }
     }
   }
@@ -125,13 +127,15 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The order item add event.
    */
   public function handleOrderItemAdd(CartOrderItemAddEvent $event): void {
-    $order_item = $event->getOrderItem();
-    $purchased_entity = $order_item->getPurchasedEntity();
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      $order_item = $event->getOrderItem();
+      $purchased_entity = $order_item->getPurchasedEntity();
 
-    if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, strval($event->getQuantity()));
-      if (!empty($event_params)) {
-        $this->pushService->push('add_to_cart', $event_params);
+      if ($purchased_entity instanceof ProductVariationInterface) {
+        $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, strval($event->getQuantity()));
+        if (!empty($event_params)) {
+          $this->pushService->push('add_to_cart', $event_params);
+        }
       }
     }
   }
@@ -143,13 +147,15 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The order item remove event.
    */
   public function handleOrderItemRemove(CartOrderItemRemoveEvent $event): void {
-    $order_item = $event->getOrderItem();
-    $purchased_entity = $order_item->getPurchasedEntity();
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      $order_item = $event->getOrderItem();
+      $purchased_entity = $order_item->getPurchasedEntity();
 
-    if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $order_item->getQuantity());
-      if (!empty($event_params)) {
-        $this->pushService->push('remove_from_cart', $event_params);
+      if ($purchased_entity instanceof ProductVariationInterface) {
+        $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $order_item->getQuantity());
+        if (!empty($event_params)) {
+          $this->pushService->push('remove_from_cart', $event_params);
+        }
       }
     }
   }
@@ -161,25 +167,27 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The order item update event.
    */
   public function handleOrderItemUpdate(CartOrderItemUpdateEvent $event): void {
-    $order_item = $event->getOrderItem();
-    $order_item_quantity = $order_item->getQuantity();
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      $order_item = $event->getOrderItem();
+      $order_item_quantity = $order_item->getQuantity();
 
-    $original_order_item = $event->getOriginalOrderItem();
-    $original_order_item_quantity = $original_order_item->getQuantity();
+      $original_order_item = $event->getOriginalOrderItem();
+      $original_order_item_quantity = $original_order_item->getQuantity();
 
-    $quantity = Calculator::subtract($order_item_quantity, $original_order_item_quantity);
-    $event_name = 'add_to_cart';
+      $quantity = Calculator::subtract($order_item_quantity, $original_order_item_quantity);
+      $event_name = 'add_to_cart';
 
-    if (Calculator::compare($quantity, '0') === -1) {
-      $quantity = Calculator::multiply($quantity, '-1');
-      $event_name = 'remove_from_cart';
-    }
+      if (Calculator::compare($quantity, '0') === -1) {
+        $quantity = Calculator::multiply($quantity, '-1');
+        $event_name = 'remove_from_cart';
+      }
 
-    $purchased_entity = $order_item->getPurchasedEntity();
-    if ($purchased_entity instanceof ProductVariationInterface) {
-      $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $quantity);
-      if (!empty($event_params)) {
-        $this->pushService->push($event_name, $event_params);
+      $purchased_entity = $order_item->getPurchasedEntity();
+      if ($purchased_entity instanceof ProductVariationInterface) {
+        $event_params = $this->buildService->buildProductVariationEventParams($purchased_entity, $quantity);
+        if (!empty($event_params)) {
+          $this->pushService->push($event_name, $event_params);
+        }
       }
     }
   }
@@ -191,9 +199,11 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The order event.
    */
   public function handleBeginCheckout(OrderEvent $event): void {
-    $order = $event->getOrder();
-    $event_params = $this->buildService->buildOrderEventParams($order);
-    $this->pushService->push('begin_checkout', $event_params);
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      $order = $event->getOrder();
+      $event_params = $this->buildService->buildOrderEventParams($order);
+      $this->pushService->push('begin_checkout', $event_params);
+    }
   }
 
   /**
@@ -203,10 +213,12 @@ class EventSubscriber implements EventSubscriberInterface {
    *   The order place post transition event.
    */
   public function handleOrderPlace(WorkflowTransitionEvent $event): void {
-    /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
-    $order = $event->getEntity();
-    $event_params = $this->buildService->buildOrderEventParams($order, TRUE, TRUE);
-    $this->pushService->push('purchase', $event_params);
+    if ($this->buildService->isMeasurementProtocolEnabled()) {
+      /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
+      $order = $event->getEntity();
+      $event_params = $this->buildService->buildOrderEventParams($order, TRUE, TRUE);
+      $this->pushService->push('purchase', $event_params);
+    }
   }
 
 }
