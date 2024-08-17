@@ -17,6 +17,8 @@ services:
       - '@module_handler'
       - '@commerce_store.current_store'
       - '@commerce_order.price_calculator'
+      - '@config.factory'
+      - '@router.admin_context'
 
   ga_server_side.push_service:
     class: Drupal\ga_server_side\PushService
