@@ -2,7 +2,7 @@ name: 'Google Analytics - Server Side'
 type: module
 description: 'Sends events directly to Google Analytics via HTTP requests.'
 package: 'Statistics'
-version: '1.0.0-alpha3'
+version: '1.0.0-alpha4'
 core_version_requirement: ^9.5 || ^10 || ^11
 configure: 'ga_server_side.settings'
 dependencies:
