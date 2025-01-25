@@ -18,7 +18,7 @@
     "license": "GPL-2.0+",
     "minimum-stability": "dev",
     "require": {
-        "drupal/commerce": "^2.27",
+        "drupal/commerce": "^2.27 || ^3.0",
         "drupal/core": "^9.5 || ^10 || ^11",
         "php": ">=8.0"
     }
