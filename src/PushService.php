@@ -175,7 +175,7 @@ class PushService {
 
     if ($request->cookies->has($cookie_name) === FALSE) {
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name not found while sending @event_name.', [
+        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name not found while sending @event_name.', [
           '@cookie_name' => $cookie_name,
           '@event_name' => $event_name,
         ]);
@@ -185,9 +185,11 @@ class PushService {
 
     $cookie_value = $request->cookies->get($cookie_name);
     $parts = explode('.', $cookie_value);
-    if (count($parts) !== 9) {
+
+    // Check if cookie format is valid (minimum 3 parts).
+    if (count($parts) < 3) {
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name found while sending @event_name, but it is malformed.', [
+        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, but it is malformed.', [
           '@cookie_name' => $cookie_name,
           '@event_name' => $event_name,
         ]);
@@ -195,9 +197,43 @@ class PushService {
       return NULL;
     }
 
-    $session_id = $parts[2];
+    $session_id = NULL;
+
+    // Detect GS2 format (new format): GS2.1.s1746825440$o14$g0$t1746825440...
+    if ($parts[0] === 'GS2') {
+      // Parse GS2 format: key-value pairs separated by $.
+      $data_string = $parts[2] ?? '';
+      $pairs = explode('$', $data_string);
+      foreach ($pairs as $pair) {
+        // Session ID is prefixed with 's'.
+        if (str_starts_with($pair, 's')) {
+          $session_id = substr($pair, 1);
+          break;
+        }
+      }
+    }
+    // Detect GS1 format (old format):
+    // GS1.1.1746825440.14.0.1746825440.0.0.295082955.
+    elseif ($parts[0] === 'GS1') {
+      $session_id = $parts[2];
+    }
+    // Fallback: try position 2 for unknown formats.
+    else {
+      $session_id = $parts[2];
+    }
+
+    if (empty($session_id)) {
+      if ($this->config->get('log_client_and_session_id') === TRUE) {
+        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, but session ID could not be extracted.', [
+          '@cookie_name' => $cookie_name,
+          '@event_name' => $event_name,
+        ]);
+      }
+      return NULL;
+    }
+
     if ($this->config->get('log_client_and_session_id') === TRUE) {
-      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie @cookie_name found while sending @event_name, session ID: @session_id.', [
+      $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, session ID: @session_id.', [
         '@cookie_name' => $cookie_name,
         '@event_name' => $event_name,
         '@session_id' => $session_id,
