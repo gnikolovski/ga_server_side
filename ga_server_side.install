@@ -6,6 +6,99 @@
  */
 
 /**
+ * Implements hook_schema().
+ */
+function ga_server_side_schema() {
+  $schema['ga_server_side_event_log'] = [
+    'description' => 'Stores Google Analytics 4 event tracking logs.',
+    'fields' => [
+      'id' => [
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique event log ID.',
+      ],
+      'event_name' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The name of the GA4 event (e.g., view_item, add_to_cart).',
+      ],
+      'event_data' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'description' => 'JSON encoded event data sent to GA4.',
+      ],
+      'client_id' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'GA4 client ID from _ga cookie.',
+      ],
+      'session_id' => [
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'GA4 session ID from _ga_{measurement_id} cookie.',
+      ],
+      'user_id' => [
+        'type' => 'int',
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => 'Drupal user ID if user is logged in.',
+      ],
+      'http_status_code' => [
+        'type' => 'int',
+        'not null' => FALSE,
+        'description' => 'HTTP status code from GA4 API response.',
+      ],
+      'response_body' => [
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => FALSE,
+        'description' => 'Response body from GA4 API.',
+      ],
+      'error_message' => [
+        'type' => 'text',
+        'not null' => FALSE,
+        'description' => 'Error message if event push failed.',
+      ],
+      'log_type' => [
+        'type' => 'varchar',
+        'length' => 50,
+        'not null' => TRUE,
+        'default' => 'event',
+        'description' => 'Type of log entry: event, cookie_parse, validation_error.',
+      ],
+      'timestamp' => [
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Unix timestamp when the event was logged.',
+      ],
+    ],
+    'primary key' => ['id'],
+    'indexes' => [
+      'event_name' => ['event_name'],
+      'client_id' => ['client_id'],
+      'user_id' => ['user_id'],
+      'timestamp' => ['timestamp'],
+      'log_type' => ['log_type'],
+    ],
+  ];
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function ga_server_side_install() {
+  // Table is automatically created by Drupal based on hook_schema().
+}
+
+/**
  * Implements hook_requirements().
  */
 function ga_server_side_requirements($phase) {
@@ -22,4 +115,16 @@ function ga_server_side_requirements($phase) {
   }
 
   return $requirements;
+}
+
+/**
+ * Create the ga_server_side_event_log table for existing installations.
+ */
+function ga_server_side_update_9001() {
+  $schema = ga_server_side_schema();
+  $schema_definition = $schema['ga_server_side_event_log'];
+
+  \Drupal::database()->schema()->createTable('ga_server_side_event_log', $schema_definition);
+
+  return t('Created ga_server_side_event_log table for event logging.');
 }

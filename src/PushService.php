@@ -5,7 +5,7 @@ namespace Drupal\ga_server_side;
 use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Config\ImmutableConfig;
-use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Database\Connection;
 use Drupal\Core\Session\AccountInterface;
 use GuzzleHttp\Client;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -38,11 +38,11 @@ class PushService {
   protected ImmutableConfig $config;
 
   /**
-   * The logger factory.
+   * The database connection.
    *
-   * @var \Drupal\Core\Logger\LoggerChannelFactoryInterface
+   * @var \Drupal\Core\Database\Connection
    */
-  protected LoggerChannelFactoryInterface $loggerFactory;
+  protected Connection $database;
 
   /**
    * The uuid service.
@@ -67,8 +67,8 @@ class PushService {
    *   The config factory.
    * @param \Drupal\Component\Uuid\UuidInterface $uuid
    *   The uuid service.
-   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_factory
-   *   The logger factory.
+   * @param \Drupal\Core\Database\Connection $database
+   *   The database connection.
    * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
    *   The request stack.
    */
@@ -76,14 +76,67 @@ class PushService {
     AccountInterface $current_user,
     ConfigFactoryInterface $config_factory,
     UuidInterface $uuid,
-    LoggerChannelFactoryInterface $logger_factory,
+    Connection $database,
     RequestStack $request_stack,
   ) {
     $this->currentUser = $current_user;
     $this->config = $config_factory->get('ga_server_side.settings');
     $this->uuid = $uuid;
-    $this->loggerFactory = $logger_factory;
+    $this->database = $database;
     $this->requestStack = $request_stack;
+  }
+
+  /**
+   * Logs an event to the custom database table.
+   *
+   * @param string $log_type
+   *   The type of log entry (event, cookie_parse, validation_error).
+   * @param string $event_name
+   *   The event name.
+   * @param array|null $event_data
+   *   The event data to log.
+   * @param string|null $client_id
+   *   The client ID.
+   * @param string|null $session_id
+   *   The session ID.
+   * @param int|null $http_status_code
+   *   HTTP status code from GA4 API response.
+   * @param string|null $response_body
+   *   Response body from GA4 API.
+   * @param string|null $error_message
+   *   Error message if any.
+   */
+  protected function logToDatabase(
+    string $log_type,
+    string $event_name,
+    ?array $event_data = NULL,
+    ?string $client_id = NULL,
+    ?string $session_id = NULL,
+    ?int $http_status_code = NULL,
+    ?string $response_body = NULL,
+    ?string $error_message = NULL
+  ): void {
+    try {
+      $this->database->insert('ga_server_side_event_log')
+        ->fields([
+          'event_name' => $event_name,
+          'event_data' => $event_data ? json_encode($event_data) : NULL,
+          'client_id' => $client_id,
+          'session_id' => $session_id,
+          'user_id' => $this->currentUser->isAuthenticated() ? $this->currentUser->id() : 0,
+          'http_status_code' => $http_status_code,
+          'response_body' => $response_body,
+          'error_message' => $error_message,
+          'log_type' => $log_type,
+          'timestamp' => time(),
+        ])
+        ->execute();
+    }
+    catch (\Exception $e) {
+      // Silently fail to avoid breaking the main functionality.
+      // We could potentially log this to watchdog, but since we're trying
+      // to replace watchdog, we'll just fail silently.
+    }
   }
 
   /**
@@ -127,10 +180,16 @@ class PushService {
     if ($request->cookies->has('_ga') === FALSE) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga not found while sending @event_name. Falling back to a randomly generated client ID: @client_id', [
-          '@event_name' => $event_name,
-          '@client_id' => $client_id,
-        ]);
+        $this->logToDatabase(
+          'cookie_parse',
+          $event_name,
+          NULL,
+          $client_id,
+          NULL,
+          NULL,
+          NULL,
+          'Cookie _ga not found while sending ' . $event_name . '. Falling back to a randomly generated client ID: ' . $client_id
+        );
       }
       return $client_id;
     }
@@ -140,20 +199,32 @@ class PushService {
     if (count($parts) !== 4) {
       $client_id = $this->generateClientId();
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found while sending @event_name, but it is malformed. Falling back to a randomly generated client ID: @client_id', [
-          '@event_name' => $event_name,
-          '@client_id' => $client_id,
-        ]);
+        $this->logToDatabase(
+          'cookie_parse',
+          $event_name,
+          NULL,
+          $client_id,
+          NULL,
+          NULL,
+          NULL,
+          'Cookie _ga found while sending ' . $event_name . ', but it is malformed. Falling back to a randomly generated client ID: ' . $client_id
+        );
       }
       return $client_id;
     }
 
     $client_id = $parts[2] . '.' . $parts[3];
     if ($this->config->get('log_client_and_session_id') === TRUE) {
-      $this->loggerFactory->get('ga_server_side:ga_cookie')->debug('Cookie _ga found while sending @event_name, client ID: @client_id', [
-        '@event_name' => $event_name,
-        '@client_id' => $client_id,
-      ]);
+      $this->logToDatabase(
+        'cookie_parse',
+        $event_name,
+        NULL,
+        $client_id,
+        NULL,
+        NULL,
+        NULL,
+        'Cookie _ga found while sending ' . $event_name . ', client ID: ' . $client_id
+      );
     }
 
     return $client_id;
@@ -175,10 +246,16 @@ class PushService {
 
     if ($request->cookies->has($cookie_name) === FALSE) {
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name not found while sending @event_name.', [
-          '@cookie_name' => $cookie_name,
-          '@event_name' => $event_name,
-        ]);
+        $this->logToDatabase(
+          'cookie_parse',
+          $event_name,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'Cookie ' . $cookie_name . ' not found while sending ' . $event_name . '.'
+        );
       }
       return NULL;
     }
@@ -189,10 +266,16 @@ class PushService {
     // Check if cookie format is valid (minimum 3 parts).
     if (count($parts) < 3) {
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, but it is malformed.', [
-          '@cookie_name' => $cookie_name,
-          '@event_name' => $event_name,
-        ]);
+        $this->logToDatabase(
+          'cookie_parse',
+          $event_name,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'Cookie ' . $cookie_name . ' found while sending ' . $event_name . ', but it is malformed.'
+        );
       }
       return NULL;
     }
@@ -224,20 +307,31 @@ class PushService {
 
     if (empty($session_id)) {
       if ($this->config->get('log_client_and_session_id') === TRUE) {
-        $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, but session ID could not be extracted.', [
-          '@cookie_name' => $cookie_name,
-          '@event_name' => $event_name,
-        ]);
+        $this->logToDatabase(
+          'cookie_parse',
+          $event_name,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          NULL,
+          'Cookie ' . $cookie_name . ' found while sending ' . $event_name . ', but session ID could not be extracted.'
+        );
       }
       return NULL;
     }
 
     if ($this->config->get('log_client_and_session_id') === TRUE) {
-      $this->loggerFactory->get('ga_server_side:ga4_cookie')->debug('Cookie @cookie_name found while sending @event_name, session ID: @session_id.', [
-        '@cookie_name' => $cookie_name,
-        '@event_name' => $event_name,
-        '@session_id' => $session_id,
-      ]);
+      $this->logToDatabase(
+        'cookie_parse',
+        $event_name,
+        NULL,
+        NULL,
+        $session_id,
+        NULL,
+        NULL,
+        'Cookie ' . $cookie_name . ' found while sending ' . $event_name . ', session ID: ' . $session_id . '.'
+      );
     }
 
     return $session_id;
@@ -282,8 +376,9 @@ class PushService {
       $event_params['session_id'] = $session_id;
     }
 
+    $client_id = $this->getClientId($event_name);
     $data = [
-      'client_id' => $this->getClientId($event_name),
+      'client_id' => $client_id,
       'events' => [
         [
           'name' => $event_name,
@@ -311,18 +406,29 @@ class PushService {
       if ($this->config->get('log_events') === TRUE) {
         $response_message = $response->getBody()->getContents();
 
-        $this->loggerFactory->get('ga_server_side:event_response')->debug('[@event_name] Response message: @response_message. Status code: @status_code. Event params: @event_params', [
-          '@event_name' => $event_name,
-          '@response_message' => !empty($response_message) ? $response_message : '-',
-          '@status_code' => $response->getStatusCode(),
-          '@event_params' => json_encode($event_params),
-        ]);
+        $this->logToDatabase(
+          'event',
+          $event_name,
+          $event_params,
+          $client_id,
+          $session_id,
+          $response->getStatusCode(),
+          $response_message,
+          NULL
+        );
       }
     }
     catch (\Exception $e) {
-      $this->loggerFactory->get('ga_server_side:event_response')->error('Error while sending data to Google Analytics: @error', [
-        '@error' => $e->getMessage(),
-      ]);
+      $this->logToDatabase(
+        'event',
+        $event_name,
+        $event_params,
+        $client_id ?? NULL,
+        $session_id ?? NULL,
+        NULL,
+        NULL,
+        'Error while sending data to Google Analytics: ' . $e->getMessage()
+      );
     }
   }
 
