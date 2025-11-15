@@ -26,5 +26,5 @@ services:
       - '@current_user'
       - '@config.factory'
       - '@uuid'
-      - '@logger.factory'
+      - '@database'
       - '@request_stack'
