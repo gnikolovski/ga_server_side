@@ -1,0 +1,3 @@
+view ga server side event logs:
+  title: 'View GA Server Side event logs'
+  description: 'Access and view Google Analytics Server Side event logs.'
