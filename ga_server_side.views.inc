@@ -11,13 +11,22 @@
 function ga_server_side_views_data() {
   $data = [];
 
-  $data['ga_server_side_event_log']['table']['group'] = t('GA4 Event Logs');
+  $data['ga_server_side_event_log']['table']['group'] = t('GA Server Side event logs');
 
   $data['ga_server_side_event_log']['table']['base'] = [
     'field' => 'id',
-    'title' => t('GA4 Event Logs'),
+    'title' => t('GA Server Side event logs'),
     'help' => t('Contains logs of Google Analytics 4 events sent from the server side.'),
     'weight' => -10,
+    'access query tag' => 'ga_server_side_event_log_access',
+    'defaults' => [
+      'access' => [
+        'type' => 'perm',
+        'options' => [
+          'perm' => 'view ga server side event logs',
+        ],
+      ],
+    ],
   ];
 
   // ID field.
