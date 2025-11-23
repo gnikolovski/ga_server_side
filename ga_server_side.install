@@ -92,13 +92,6 @@ function ga_server_side_schema() {
 }
 
 /**
- * Implements hook_install().
- */
-function ga_server_side_install() {
-  // Table is automatically created by Drupal based on hook_schema().
-}
-
-/**
  * Implements hook_requirements().
  */
 function ga_server_side_requirements($phase) {

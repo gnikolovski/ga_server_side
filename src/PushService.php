@@ -114,7 +114,7 @@ class PushService {
     ?string $session_id = NULL,
     ?int $http_status_code = NULL,
     ?string $response_body = NULL,
-    ?string $error_message = NULL
+    ?string $error_message = NULL,
   ): void {
     try {
       $this->database->insert('ga_server_side_event_log')
@@ -423,7 +423,7 @@ class PushService {
         'event',
         $event_name,
         $event_params,
-        $client_id ?? NULL,
+        $client_id,
         $session_id ?? NULL,
         NULL,
         NULL,
